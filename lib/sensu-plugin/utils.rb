@@ -34,6 +34,14 @@ module Sensu
         end
       end
 
+      def event_check
+        @event['check']
+      end
+
+      def event_client
+        @event['client']
+      end
+
       def net_http_req_class(method)
         case method.to_s.upcase
         when 'GET'

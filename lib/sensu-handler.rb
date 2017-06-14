@@ -4,6 +4,7 @@ require 'uri'
 require 'json'
 require 'sensu-plugin/utils'
 require 'mixlib/cli'
+require 'ostruct'
 
 module Sensu
 
@@ -23,7 +24,6 @@ module Sensu
     def handle
       puts 'ignoring event -- no handler defined'
     end
-
 
     # Filters exit the proccess if the event should not be handled.
     #
@@ -48,7 +48,7 @@ module Sensu
     #
     # @return [TrueClass, FalseClass]
     def deprecated_filtering_enabled?
-      @event['check'].fetch('enable_deprecated_filtering', false).to_s == "true"
+      event_check.fetch('enable_deprecated_filtering', false).to_s == "true"
     end
 
     # Evaluates whether the event should be processed by the
@@ -57,7 +57,7 @@ module Sensu
     #
     # @return [TrueClass, FalseClass]
     def deprecated_occurrence_filtering_enabled?
-      @event['check'].fetch('enable_deprecated_occurrence_filtering', false).to_s == "true"
+      event_check.fetch('enable_deprecated_occurrence_filtering', false).to_s == "true"
     end
 
     # This works just like Plugin::CLI's autorun.
@@ -87,11 +87,11 @@ module Sensu
     # Helpers and filters.
 
     def event_summary(trim_at=100)
-      summary = @event['check']['notification'] || @event['check']['description']
+      summary = event_check['notification'] || event_check['description']
       if summary.nil?
-        source = @event['check']['source'] || @event['client']['name']
-        event_context = [source, @event['check']['name']].join('/')
-        output = @event['check']['output'].chomp
+        source = event_check['source'] || event_client['name']
+        event_context = [source, event_check['name']].join('/')
+        output = event_check['output'].chomp
         output = output.length > trim_at ? output[0..trim_at] + '...' : output
         summary = [event_context, output].join(' : ')
       end
@@ -99,8 +99,8 @@ module Sensu
     end
 
     def bail(msg)
-      client_name = @event['client']['name'] || 'error:no-client-name'
-      check_name = @event['check']['name'] || 'error:no-check-name'
+      client_name = event_client['name'] || 'error:no-client-name'
+      check_name = event_check['name'] || 'error:no-check-name'
       puts "#{msg}: #{client_name}/#{check_name}"
       exit 0
     end
@@ -147,7 +147,7 @@ module Sensu
     end
 
     def filter_disabled
-      if @event['check']['alert'] == false
+      if event_check['alert'] == false
         bail 'alert disabled'
       end
     end
@@ -163,9 +163,9 @@ module Sensu
         defaults.merge!(settings['sensu_plugin'])
       end
 
-      occurrences = (@event['check']['occurrences'] || defaults['occurrences']).to_i
-      interval = (@event['check']['interval'] || defaults['interval']).to_i
-      refresh = (@event['check']['refresh'] || defaults['refresh']).to_i
+      occurrences = (event_check['occurrences'] || defaults['occurrences']).to_i
+      interval = (event_check['interval'] || defaults['interval']).to_i
+      refresh = (event_check['refresh'] || defaults['refresh']).to_i
       if @event['occurrences'] < occurrences
         bail 'not enough occurrences'
       end
@@ -183,9 +183,9 @@ module Sensu
 
     def filter_silenced
       stashes = [
-        ['client', '/silence/' + @event['client']['name']],
-        ['check', '/silence/' + @event['client']['name'] + '/' + @event['check']['name']],
-        ['check', '/silence/all/' + @event['check']['name']]
+        ['client', '/silence/' + event_client['name']],
+        ['check', '/silence/' + event_client['name'] + '/' + event_check['name']],
+        ['check', '/silence/all/' + event_check['name']]
       ]
       stashes.each do |(scope, path)|
         begin
@@ -207,14 +207,14 @@ module Sensu
     end
 
     def filter_dependencies
-      if @event['check'].has_key?('dependencies')
-        if @event['check']['dependencies'].is_a?(Array)
-          @event['check']['dependencies'].each do |dependency|
+      if event_check.has_key?('dependencies')
+        if event_check['dependencies'].is_a?(Array)
+          event_check['dependencies'].each do |dependency|
             begin
               next if dependency.to_s.empty?
               Timeout.timeout(2) do
                 check, client = dependency.split('/').reverse
-                if event_exists?(client || @event['client']['name'], check)
+                if event_exists?(client || event_client['name'], check)
                   bail 'check dependency event exists'
                 end
               end
